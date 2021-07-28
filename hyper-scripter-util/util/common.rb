@@ -1,6 +1,8 @@
 require 'io/console'
 
 RED = "\033[0;31m".freeze
+YELLOW_BG = "\033[0;43m".freeze
+YELLOW_BG_RED = "\033[31;43m".freeze
 NC = "\033[0m".freeze
 ENTER = "\r".freeze
 
@@ -92,11 +94,21 @@ class Selector
     @offset = offset
     @callbacks = {}
     @enter_overriden = false
+    @multi_select_callback = nil
+  end
+
+  def on_multi_select(callback)
+    @multi_select_callback= callback
+  end
+
+  def can_virtual?
+    not @multi_select_callback.nil?
   end
 
   def run(sequence: '')
     pos = 0
     mode = :normal
+    virtual_state = nil
     loop do
       win_width = IO.console.winsize[1]
       option_count = @options.length
@@ -104,14 +116,21 @@ class Selector
 
       line_count = 0
       display_pos = @offset + pos
+
+      virtual_state.set_point(display_pos) unless virtual_state.nil?
+
       if sequence.length == 0
         @options.each_with_index do |option, i|
           cur_display_pos = @offset + i
+          is_virtual_selected = virtual_state.nil? ? false : virtual_state.in_range(cur_display_pos)
           leading = pos == i ? '>' : ' '
           gen_line = ->(content) { "#{leading} #{cur_display_pos}. #{content}" }
           line_count += compute_lines(gen_line.call(option).length, win_width) # calculate line height without color, since colr will mess up char count
-          option = option.gsub(@search_string, "#{RED}#{@search_string}#{NC}") if @search_string.length > 0
-          $stderr.print gen_line.call(option) + "\n"
+          option = self.class.color_line(option, @search_string, is_virtual_selected)
+          option = gen_line.call(option)
+
+          option = "#{YELLOW_BG}#{option}#{NC}" if is_virtual_selected
+          $stderr.print("#{option}\n")
         end
       end
 
@@ -180,6 +199,12 @@ class Selector
         when '/'
           mode = :search
           @search_string = ''
+        when 'v', 'V'
+          if virtual_state.nil?
+            virtual_state = VirtualState.new(display_pos)
+          else
+            virtual_state = nil
+          end
         else
           resp_to_i = resp.to_i
           if resp =~ /[0-9]/
@@ -226,6 +251,17 @@ class Selector
     ret.new(cb, content, recur)
   end
 
+  def self.color_line(option, search_string, is_virtual_selected)
+    if is_virtual_selected
+      if search_string.length > 0
+        return option.gsub(search_string, "#{YELLOW_BG_RED}#{search_string}#{YELLOW_BG}")
+      end
+    elsif search_string.length > 0
+      return option.gsub(search_string, "#{RED}#{search_string}#{NC}")
+    end
+    option
+  end
+
   private
 
   def search_index(pos, reverse = false)
@@ -245,5 +281,29 @@ class Selector
     lines = 1 + len / win_width
     lines -= 1 if len % win_width == 0
     lines
+  end
+end
+
+class VirtualState
+  def initialize(num)
+    @fixed = num
+    @moving = num
+  end
+
+  def set_point(num)
+    @moving = num
+  end
+
+  def get_range
+    if @fixed < @moving
+      [@fixed, @moving + 1]
+    else
+      [@moving, @fixed + 1]
+    end
+  end
+
+  def in_range(num)
+    from, to = get_range
+    num >= from and num < to
   end
 end
