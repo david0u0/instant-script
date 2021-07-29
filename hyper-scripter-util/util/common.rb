@@ -85,10 +85,9 @@ class Selector
     keys.each { |k| @callbacks.store(k, self.class.make_callback(callback, msg, recur)) }
   end
 
-  # TODO: support recur false
   def register_keys_virtual(keys, callback, msg: '', recur: false)
     keys = [keys] unless keys.is_a?(Array)
-    keys.each { |k| @virtual_callbacks.store(k, self.class.make_callback(callback, msg, true)) }
+    keys.each { |k| @virtual_callbacks.store(k, self.class.make_callback(callback, msg, recur)) }
   end
 
   # Initiate the selector
@@ -119,12 +118,12 @@ class Selector
       line_count = 0
       display_pos = @offset + pos
 
-      virtual_state.set_point(display_pos) unless virtual_state.nil?
+      virtual_state.set_point(pos) unless virtual_state.nil?
 
       if sequence.length == 0
         @options.each_with_index do |option, i|
           cur_display_pos = @offset + i
-          is_virtual_selected = virtual_state.nil? ? false : virtual_state.in_range(cur_display_pos)
+          is_virtual_selected = virtual_state.nil? ? false : virtual_state.in_range?(i)
           leading = pos == i ? '>' : ' '
           gen_line = ->(content) { "#{leading} #{cur_display_pos}. #{content}" }
           line_count += compute_lines(gen_line.call(option).length, win_width) # calculate line height without color, since colr will mess up char count
@@ -202,7 +201,7 @@ class Selector
           mode = :search
           @search_string = ''
         when 'v', 'V'
-          virtual_state = (VirtualState.new(display_pos) if virtual_state.nil? && can_virtual?)
+          virtual_state = (VirtualState.new(pos) if virtual_state.nil? && can_virtual?)
         else
           resp_to_i = resp.to_i
           if resp =~ /[0-9]/
@@ -234,22 +233,31 @@ class Selector
 
       if virtual_state.nil?
         callback.cb.call(display_pos, @options[pos])
+        return self.class.make_result(display_pos, @options[pos]) unless callback.recur
       else
         min, max = virtual_state.get_range
-        callback.cb.call(min, max)
+        display_min = min + @offset
+        display_max = max + @offset
+        opts = @options[min..max]
+        callback.cb.call(display_min, display_max, opts)
+        return self.class.make_multi_result(display_min, display_max, opts) unless callback.recur
       end
-
-      return self.class.make_result(display_pos, @options[pos]) unless callback.recur
 
       # for options count change
       new_options = @options.length
-      pos = new_options - 1 if pos >= new_options
+      pos = [@options.length - 1, pos].min
+      virtual_state.truncate_by_length(@options.length)
     end
   end
 
   def self.make_result(pos, content)
-    ret = Struct.new(:pos, :content)
-    ret.new(pos, content)
+    ret = Struct.new(:is_multi, :pos, :content)
+    ret.new(false, pos, content)
+  end
+
+  def self.make_multi_result(min, max, options)
+    ret = Struct.new(:is_multi, :min, :max, :options)
+    ret.new(true, min, max, options)
   end
 
   def self.make_callback(cb, content, recur)
@@ -306,7 +314,12 @@ class VirtualState
     end
   end
 
-  def in_range(num)
+  def truncate_by_length(length)
+    @fixed = [length - 1, @fixed].min
+    @moving = [length - 1, @moving].min
+  end
+
+  def in_range?(num)
     from, to = get_range
     num >= from and num < to
   end

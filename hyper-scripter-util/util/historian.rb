@@ -72,13 +72,14 @@ selector.register_keys(%w[r R], lambda { |pos, _|
   HS_ENV.do_hs("history rm =#{script_name}! #{pos}", false)
 }, msg: 'replce the argument')
 
-selector.register_keys_virtual(%w[d D], lambda { |min, max|
+selector.register_keys_virtual(%w[d D], lambda { |min, max, _|
   HS_ENV.do_hs("history rm =#{script_name}! #{min}..#{max}", false)
   selector.load(load_history.call)
 }, msg: 'delete the history', recur: true)
 
 args = begin
-  selector.run(sequence: SEQUENCE).content
+  res = selector.run(sequence: SEQUENCE)
+  res.content
 rescue Selector::Empty
   puts 'History is empty'
   exit
