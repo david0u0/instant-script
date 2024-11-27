@@ -21,7 +21,7 @@ pub async fn get_pool(need_journal: &mut bool) -> Result<(SqlitePool, bool)> {
     if !file.exists() {
         *need_journal = true;
         let pool = do_migrate_may_force_pre_sql(file, true).await?;
-        return Ok((pool, true));
+        return Ok((pool, true)); // FIXME: 若有 .script_info.sql 不應視為初始
     }
 
     let mut opt = SqliteConnectOptions::new().filename(&file);
