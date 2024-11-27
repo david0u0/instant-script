@@ -443,3 +443,22 @@ fn test_first_command() {
     run_first_cmd("t gg");
     assert_eq!("", run!("ls").unwrap());
 }
+
+#[test]
+fn test_alias_args() {
+    println!("`hs script 'a b c'` & `hs script-alias 'a b c'` should be the same");
+
+    let _g = setup();
+    run!("e -T rb test | puts ARGV.inspect").unwrap();
+    run!("alias test-alias test").unwrap();
+    run!("alias test-alias-shell !ruby $HS_HOME/test.rb").unwrap();
+
+    let expected = r#"["a b c"]"#;
+    let normal_res = run!("test 'a b c'").unwrap();
+    let alias_res = run!("test-alias 'a b c'").unwrap();
+    let alias_shell_res = run!("test-alias-shell 'a b c'").unwrap();
+
+    assert_eq!(expected, normal_res);
+    assert_eq!(expected, alias_res);
+    assert_eq!(expected, alias_shell_res);
+}

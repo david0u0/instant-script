@@ -6,6 +6,8 @@ use hyper_scripter::{
     path::normalize_path,
 };
 use shlex::Shlex;
+use std::ffi::OsStr;
+use std::fmt::Debug;
 use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
 use std::process::{Command, ExitStatus, Stdio};
@@ -192,8 +194,16 @@ pub fn run_with_env<T: ToString>(env: RunEnv, args: T) -> Result<String> {
         full_args.extend(Shlex::new(&args))
     };
 
-    log::info!("開始執行 {:?}", full_args);
-    let mut cmd = Command::new(normalize_path(get_exe()).unwrap());
+    run_cmd(normalize_path(get_exe()).unwrap(), &full_args, env)
+}
+
+pub fn run_cmd(
+    exe: impl AsRef<OsStr>,
+    args: &[impl AsRef<OsStr> + Debug],
+    env: RunEnv,
+) -> Result<String> {
+    log::info!("開始執行 {:?}", args);
+    let mut cmd = Command::new(exe);
     if let Some(dir) = env.dir {
         log::info!("使用路徑 {}", dir.to_string_lossy());
         cmd.current_dir(&dir);
@@ -209,7 +219,7 @@ pub fn run_with_env<T: ToString>(env: RunEnv, args: T) -> Result<String> {
         }
     }
     let mut child = cmd
-        .args(&full_args)
+        .args(args)
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit())
         .spawn()
@@ -232,11 +242,11 @@ pub fn run_with_env<T: ToString>(env: RunEnv, args: T) -> Result<String> {
     let res = if status.success() {
         Ok(out_str.join("\n"))
     } else if env.allow_other_error == Some(true) || status.code() == Some(EXIT_KNOWN_ERR.code()) {
-        Err(Error::exit_status(status).context(format!("執行 {:?} 失敗", full_args)))
+        Err(Error::exit_status(status).context(format!("執行 {:?} 失敗", args)))
     } else {
-        panic!("執行 {:?} 遭未知的錯誤！", full_args);
+        panic!("執行 {:?} 遭未知的錯誤！", args);
     };
-    log::info!("執行 {:?} 完畢，結果為 {}", full_args, fmt_result(&res));
+    log::info!("執行 {:?} 完畢，結果為 {}", args, fmt_result(&res));
     res
 }
 

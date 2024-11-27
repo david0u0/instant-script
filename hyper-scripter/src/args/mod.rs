@@ -6,6 +6,7 @@ use crate::path;
 use crate::query::{EditQuery, ListQuery, RangeQuery, ScriptOrDirQuery, ScriptQuery};
 use crate::script_type::{ScriptFullType, ScriptType};
 use crate::tag::TagSelector;
+use crate::to_display_args;
 use crate::Either;
 use crate::APP_NAME;
 use clap::{CommandFactory, Error as ClapError, Parser};
@@ -134,25 +135,20 @@ impl AliasRoot {
     ) -> Option<Either<impl Iterator<Item = &'a str>, Vec<String>>> {
         if let Some((alias, remaining_args)) = self.find_alias(conf) {
             let (is_shell, after_args) = alias.args();
-
-            let base_len = if is_shell {
-                0 // shell 別名，完全無視開頭的參數（例如 `hs -s tag -H path/to/home`）
-            } else {
-                args.len() - remaining_args.len()
-            };
-            let base_args = args.iter().take(base_len).map(AsRef::as_ref);
-
             let remaining_args = remaining_args[1..].iter().map(String::as_str);
 
             if is_shell {
-                let ret: Vec<_> = base_args
-                    .chain(after_args)
-                    .chain(remaining_args)
+                // shell 別名，完全無視開頭的參數（例如 `hs -s tag -H path/to/home`）
+                let remaining_args = remaining_args.map(|s| to_display_args(s).to_string());
+                let ret: Vec<_> = after_args
                     .map(ToOwned::to_owned)
+                    .chain(remaining_args)
                     .collect();
                 return Some(Either::Two(ret));
             }
 
+            let base_len = args.len() - remaining_args.len() - 1;
+            let base_args = args.iter().take(base_len).map(AsRef::as_ref);
             let new_args = base_args.chain(after_args).chain(remaining_args);
 
             // log::trace!("新的參數為 {:?}", new_args);

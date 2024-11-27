@@ -224,7 +224,7 @@ fn test_shell_alias() {
 
     // env in shell alias
     const MSG: &'static str = "this is a test";
-    run!("e -T rb that-file | puts '{}'", MSG).unwrap();
+    run!("e -T rb that-file | puts \"#{{ENV['HS_HOME']}}: {}\"", MSG).unwrap();
     run!("e -T txt this-file | {}", MSG).unwrap();
     run!("alias readit !cat $HS_HOME/this-file").unwrap();
     assert_eq!(MSG, run!("cat").unwrap());
@@ -232,10 +232,18 @@ fn test_shell_alias() {
 
     // escape character e.g. "*"
     run!("alias lsit !$HS_EXE -H $HS_HOME ls").unwrap();
-    assert_eq!(run!("ls").unwrap(), run!(dir: "/", "lsit '\\*'").unwrap());
+    assert_eq!(run!("ls").unwrap(), run!(dir: "/", "lsit *").unwrap());
 
-    run!("alias with '!true;'").unwrap();
-    assert_eq!(MSG, run!("with ruby $HS_HOME/that-file.rb").unwrap());
+    run!("alias with '!cd $HS_HOME;'").unwrap();
+    let home = get_home().to_string_lossy();
+    let file_path = format!("{}/that-file.rb", home);
+    let expected = format!("{}: {}", home, MSG);
+    assert_eq!(expected, run!("that-file").unwrap());
+    assert_eq!(expected, run!("with ruby ./that-file.rb").unwrap());
+    assert_ne!(
+        expected,
+        run_cmd("ruby", &[file_path], Default::default()).unwrap()
+    ); // run the script without hs, should not have env variables
 }
 
 #[test]
